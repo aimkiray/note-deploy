@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>通过 PXE 批量重装 Ubuntu | Aimkiray</title>
+    <meta name="generator" content="VuePress 1.8.2">
+    <link rel="icon" href="/favicon.ico">
+    <meta name="description" content="
+
+虽然 Ubuntu 安装程序也支持 Kickstart 脚本，但这种方式简单却不够灵活。">
+    
+    <link rel="preload" href="/assets/css/0.styles.5dee9f5d.css" as="style"><link rel="preload" href="/assets/js/app.49795733.js" as="script"><link rel="preload" href="/assets/js/3.2ca235c3.js" as="script"><link rel="preload" href="/assets/js/14.1fb229d1.js" as="script"><link rel="prefetch" href="/assets/js/10.1c9faff4.js"><link rel="prefetch" href="/assets/js/11.3398eebf.js"><link rel="prefetch" href="/assets/js/12.3e0f1209.js"><link rel="prefetch" href="/assets/js/13.a001a67f.js"><link rel="prefetch" href="/assets/js/15.0eb3337e.js"><link rel="prefetch" href="/assets/js/4.0f412165.js"><link rel="prefetch" href="/assets/js/5.145cfc45.js"><link rel="prefetch" href="/assets/js/6.cb61558e.js"><link rel="prefetch" href="/assets/js/7.790cce59.js"><link rel="prefetch" href="/assets/js/8.7960229b.js"><link rel="prefetch" href="/assets/js/9.96827276.js"><link rel="prefetch" href="/assets/js/vuejs-paginate.0d486c7d.js">
+    <link rel="stylesheet" href="/assets/css/0.styles.5dee9f5d.css">
+  </head>
+  <body>
+    <div id="app" data-server-rendered="true"><div><div class="la-pacman la-2x"><div></div> <div></div> <div></div> <div></div> <div></div> <div></div></div> <div class="global-layout"><div class="header-wrapper header"><div class="title-wrapper"><a href="/" class="title router-link-active">Aimkiray</a></div> <div class="nav-wrap"><a href="/tag/" class="nav-item">Tag
+		</a><a href="/404/" class="nav-item">About
+		</a><a href="https://github.com/aimkiray" target="_blank" rel="noopener" class="nav-item">Git
+		</a></div></div> <div class="cat-ear"><span class="a-ear">▲</span> <span class="a-ear">▲</span></div> <div class="main-wrapper" style="border-top-left-radius:49% 0;border-top-right-radius:49% 0;"><div><div class="post-wrapper"><div class="post-header"><h1 class="post-title">通过 PXE 批量重装 Ubuntu</h1> <div class="post-meta">
+				Last modified @ Oct 21 2020
+			</div></div> <div class="content__default"><h2 id="概述"><a href="#概述" class="header-anchor">#</a> 概述</h2> <p>虽然 Ubuntu 安装程序也支持 Kickstart 脚本，但这种方式简单却不够灵活。完整版的 Ubuntu Server 18.04 使用 debian-installer，有自己的应答脚本 Preseed，它不仅能应答所有安装选项，还能完成一些手动安装做不到的操作。</p> <p>在 <a href="/note/linux/pxe-centos.html">CentOS 篇</a>中，我们给 PXE Server 安装了 DHCP/TFTP/Nginx 等很多软件，麻烦不说还容易出错。这次我们改用 Dnsmasq，只需一个配置文件，可同时提供 DHCP 和 TFTP。同时省去了 HTTP 服务，直接从 APT 代理安装系统。</p> <h2 id="准备-pxe-server-环境"><a href="#准备-pxe-server-环境" class="header-anchor">#</a> 准备 PXE Server 环境</h2> <p>安装相关软件。</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token function">sudo</span> <span class="token function">apt</span> update
+<span class="token function">sudo</span> <span class="token function">apt</span> <span class="token function">install</span> dnsmasq
+</code></pre></div><p>配置 dnsmasq，开启 DHCP 和 TFTP 功能。</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token function">mkdir</span> -p /srv/tftp/
+
+$ <span class="token function">cat</span> /etc/dnsmasq.conf
+
+<span class="token assign-left variable">interface</span><span class="token operator">=</span>eth0
+bind-interfaces
+dhcp-range<span class="token operator">=</span><span class="token number">172.16</span>.199.1,172.16.199.254
+dhcp-boot<span class="token operator">=</span>grubnetx64.efi.signed
+dhcp-host<span class="token operator">=</span><span class="token number">172.16</span>.199.1
+
+enable-tftp
+tftp-root<span class="token operator">=</span>/srv/tftp/
+</code></pre></div><p>其中，interface 是当前活动网卡名，dhcp-boot 为 grub 引导文件的位置，dhcp-host 作为 DHCP 客户端的网关 IP（用来可访问当前机器），tftp-root 则是 TFTP Server 的根目录。</p> <p>至于 Nginx，可以用默认配置。然后启动服务。</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token function">sudo</span> systemctl start dnsmasq
+</code></pre></div><h2 id="相关文件"><a href="#相关文件" class="header-anchor">#</a> 相关文件</h2> <h3 id="boot-loader"><a href="#boot-loader" class="header-anchor">#</a> Boot loader</h3> <p>UEFI 启动需要 boot loader（指 GRUB），可以从 Ubuntu 软件源中下载，然后丢进 TFTP 根目录。</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token function">sudo</span> <span class="token function">apt-get</span> <span class="token function">install</span> grub-efi-amd64-signed
+
+<span class="token function">sudo</span> <span class="token function">cp</span> /usr/lib/grub/x86_64-efi-signed/grubnetx64.efi.signed /srv/tftp/grubnetx64.efi.signed
+</code></pre></div><p>grubnetx64.efi.signed 这个名字就是在 /etc/dnsmasq.conf 的 dhcp-boot 字段中定义的那个。</p> <h3 id="grub"><a href="#grub" class="header-anchor">#</a> GRUB</h3> <p>接下来配置 GRUB，其实就是 Ubuntu 启动时选择系统的菜单，只不过我们要把系统从本地换到远程。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>$ <span class="token function">mkdir</span> -p /srv/tftp/grub
+
+$ <span class="token function">cat</span> /srv/tftp/grub/grub.cfg
+
+<span class="token builtin class-name">set</span> <span class="token assign-left variable">default</span><span class="token operator">=</span><span class="token string">&quot;0&quot;</span>
+<span class="token builtin class-name">set</span> <span class="token assign-left variable">timeout</span><span class="token operator">=</span><span class="token number">6</span>
+menuentry <span class="token string">&quot;Install Ubuntu&quot;</span> <span class="token punctuation">{</span>
+  <span class="token builtin class-name">set</span> <span class="token assign-left variable">gfxpayload</span><span class="token operator">=</span>keep
+  linux /ubuntu/linux <span class="token assign-left variable">gfxpayload</span><span class="token operator">=</span>800x600x16,800x600 --- <span class="token assign-left variable">auto</span><span class="token operator">=</span>true <span class="token assign-left variable">priority</span><span class="token operator">=</span>critical <span class="token assign-left variable">interface</span><span class="token operator">=</span>auto <span class="token assign-left variable">hostname</span><span class="token operator">=</span>fox <span class="token assign-left variable">GRUB_DISABLE_OS_PROBER</span><span class="token operator">=</span>true <span class="token assign-left variable">url</span><span class="token operator">=</span>tftp://172.16.1.1/preseed.cfg quiet
+  initrd /ubuntu/initrd.gz
+<span class="token punctuation">}</span>
+</code></pre></div><p>由于咱需要操作 LVM 分区，而 Ubuntu 18.04 的 os-prober 操作 LVM 分区时会触发 <a href="https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=853927" target="_blank" rel="noopener noreferrer">BUG<span><svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" x="0px" y="0px" viewBox="0 0 100 100" width="15" height="15" class="icon outbound"><path fill="currentColor" d="M18.8,85.1h56l0,0c2.2,0,4-1.8,4-4v-32h-8v28h-48v-48h28v-8h-32l0,0c-2.2,0-4,1.8-4,4v56C14.8,83.3,16.6,85.1,18.8,85.1z"></path> <polygon fill="currentColor" points="45.7,48.7 51.3,54.3 77.2,28.5 77.2,37.2 85.2,37.2 85.2,14.9 62.8,14.9 62.8,22.9 71.5,22.9"></polygon></svg> <span class="sr-only">(opens new window)</span></span></a>，所以加了个环境变量 GRUB_DISABLE_OS_PROBER=true 禁用这个。其他配置项说明可以参考上篇。</p> <h3 id="网络引导"><a href="#网络引导" class="header-anchor">#</a> 网络引导</h3> <p>从<a href="http://cdimage.ubuntu.com/netboot/" target="_blank" rel="noopener noreferrer">这里<span><svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" x="0px" y="0px" viewBox="0 0 100 100" width="15" height="15" class="icon outbound"><path fill="currentColor" d="M18.8,85.1h56l0,0c2.2,0,4-1.8,4-4v-32h-8v28h-48v-48h28v-8h-32l0,0c-2.2,0-4,1.8-4,4v56C14.8,83.3,16.6,85.1,18.8,85.1z"></path> <polygon fill="currentColor" points="45.7,48.7 51.3,54.3 77.2,28.5 77.2,37.2 85.2,37.2 85.2,14.9 62.8,14.9 62.8,22.9 71.5,22.9"></polygon></svg> <span class="sr-only">(opens new window)</span></span></a>下载 Ubuntu 的网络引导镜像，解压到 TFTP 目录下。</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token function">mkdir</span> -p /srv/tftp/ubuntu
+
+<span class="token function">wget</span> http://archive.ubuntu.com/ubuntu/dists/bionic-updates/main/installer-amd64/current/images/netboot/netboot.tar.gz
+<span class="token function">tar</span> -xvzf netboot.tar.gz -C /srv/tftp/ubuntu
+</code></pre></div><h3 id="软件包缓存"><a href="#软件包缓存" class="header-anchor">#</a> 软件包缓存</h3> <p>Ubuntu 的安装程序可以从网络下载软件包，但如果批量安装，咱的外网就要被撑爆了。可以在 PXE Server 上搭建软件包缓存服务，</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token function">sudo</span> <span class="token function">apt-get</span> <span class="token function">install</span> apt-cacher-ng
+</code></pre></div><p>需要在 Preseed 文件中设置源代理 <code>d-i mirror/http/proxy string http://172.16.1.1:3142/</code> 指向该服务器。</p> <h2 id="preseed"><a href="#preseed" class="header-anchor">#</a> Preseed</h2> <p>Preseed 文件就像是剧本，描述的是安装步骤。咱先简单举几个🌰，大家可根据自身需求修改相关配置。</p> <p>相同的地方，系统盘使用 LVM 方式分区，除了 <code>/boot,/boot/efi</code> 分区外，其余空间全给根目录，禁用 SWAP 分区。启用 ROOT 用户，允许 ROOT 用户远程登录，自动安装 openssh-server openssh-client vim curl。</p> <ul><li>系统盘名字固定，比如单块 SATA 系统盘默认设备名是 <code>/dev/sda</code>，单块 NVMe SSD 是 <code>/dev/nvme0n1</code>，这样系统盘可以写死在配置中。</li></ul> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token comment">### Unattended Installation</span>
+d-i auto-install/enable boolean <span class="token boolean">true</span>
+d-i debconf/priority <span class="token keyword">select</span> critical
+
+<span class="token comment">### Localization</span>
+d-i debian-installer/locale string en_US.UTF-8
+d-i localechooser/languagelist <span class="token keyword">select</span> en
+d-i localechooser/shortlist/en <span class="token keyword">select</span> US
+d-i localechooser/continentlist <span class="token keyword">select</span> Asia
+d-i localechooser/countrylist/Asia <span class="token keyword">select</span> China
+d-i console-setup/ask_detect boolean <span class="token boolean">false</span>
+d-i keyboard-configuration/xkb-keymap <span class="token keyword">select</span> us
+
+<span class="token comment">### Account setup</span>
+d-i passwd/root-login boolean <span class="token boolean">true</span>
+d-i passwd/make-user boolean <span class="token boolean">false</span>
+d-i passwd/root-password password ABC123def
+d-i passwd/root-password-again password ABC123def
+d-i user-setup/allow-password-weak boolean <span class="token boolean">true</span>
+
+<span class="token comment">### Network configuration</span>
+d-i netcfg/choose_interface <span class="token keyword">select</span> auto
+d-i netcfg/get_hostname string <span class="token function">cat</span>
+d-i hw-detect/load_firmware boolean <span class="token boolean">true</span>
+
+<span class="token comment"># If you want the preconfiguration file to work on systems both with and</span>
+<span class="token comment"># without a dhcp server, uncomment these lines and the static network</span>
+<span class="token comment"># configuration below.</span>
+d-i netcfg/dhcp_failed note
+d-i netcfg/dhcp_options <span class="token keyword">select</span> Configure network manually
+
+<span class="token comment"># Static network configuration.</span>
+d-i netcfg/get_ipaddress string <span class="token number">172.16</span>.1.207
+d-i netcfg/get_netmask string <span class="token number">255.255</span>.0.0
+d-i netcfg/get_gateway string <span class="token number">172.16</span>.255.254
+d-i netcfg/get_nameservers string <span class="token number">223.5</span>.5.5
+d-i netcfg/confirm_static boolean <span class="token boolean">true</span>  
+
+<span class="token comment">### Partition</span>
+<span class="token comment"># Specify a disk to partition. The device name</span>
+<span class="token comment"># can be given in either devfs or traditional non-devfs format.</span>
+d-i partman-auto/disk string /dev/nvme0n1
+d-i grub-installer/bootdev string /dev/nvme0n1
+<span class="token comment"># In addition, you'll need to specify the method to use.</span>
+<span class="token comment"># The presently available methods are: &quot;regular&quot;, &quot;lvm&quot; and &quot;crypto&quot;</span>
+d-i partman-auto/method string lvm
+
+<span class="token comment"># If one of the disks that are going to be automatically partitioned</span>
+<span class="token comment"># contains an old LVM configuration, the user will normally receive a</span>
+<span class="token comment"># warning. This can be preseeded away...</span>
+d-i partman-auto/purge_lvm_from_device boolean <span class="token boolean">true</span>
+
+<span class="token comment"># http://cptyesterday.wordpress.com/2012/06/17/notes-on-using-expert_recipe-in-debianubuntu-preseed-files/</span>
+d-i partman-auto/choose_recipe <span class="token keyword">select</span> boot-root
+d-i partman-auto-lvm/new_vg_name string main
+d-i partman-auto-lvm/guided_size string max
+
+d-i partman-auto/expert_recipe string                <span class="token punctuation">\</span>
+    boot-root ::                                     <span class="token punctuation">\</span>
+        <span class="token number">1</span> <span class="token number">1</span> <span class="token number">1</span> <span class="token function">free</span>                                   <span class="token punctuation">\</span>
+            <span class="token variable">$bios_boot</span><span class="token punctuation">{</span> <span class="token punctuation">}</span>                            <span class="token punctuation">\</span>
+            method<span class="token punctuation">{</span> biosgrub <span class="token punctuation">}</span>                       <span class="token punctuation">\</span>
+        <span class="token builtin class-name">.</span>                                            <span class="token punctuation">\</span>
+        <span class="token number">256</span> <span class="token number">256</span> <span class="token number">256</span> fat32                            <span class="token punctuation">\</span>
+            <span class="token variable">$primary</span><span class="token punctuation">{</span> <span class="token punctuation">}</span>                              <span class="token punctuation">\</span>
+            <span class="token variable">$iflabel</span><span class="token punctuation">{</span> gpt <span class="token punctuation">}</span>                          <span class="token punctuation">\</span>
+            <span class="token variable">$reusemethod</span><span class="token punctuation">{</span> <span class="token punctuation">}</span>                          <span class="token punctuation">\</span>
+            method<span class="token punctuation">{</span> efi <span class="token punctuation">}</span> format<span class="token punctuation">{</span> <span class="token punctuation">}</span>                  <span class="token punctuation">\</span>
+            mountpoint<span class="token punctuation">{</span> /boot/efi <span class="token punctuation">}</span>                  <span class="token punctuation">\</span>
+        <span class="token builtin class-name">.</span>                                            <span class="token punctuation">\</span>
+        <span class="token number">512</span> <span class="token number">512</span> <span class="token number">512</span> ext4                             <span class="token punctuation">\</span>
+            <span class="token variable">$primary</span><span class="token punctuation">{</span> <span class="token punctuation">}</span>                              <span class="token punctuation">\</span>
+            <span class="token variable">$bootable</span><span class="token punctuation">{</span> <span class="token punctuation">}</span>                             <span class="token punctuation">\</span>
+            method<span class="token punctuation">{</span> <span class="token function">format</span> <span class="token punctuation">}</span> format<span class="token punctuation">{</span> <span class="token punctuation">}</span>               <span class="token punctuation">\</span>
+            use_filesystem<span class="token punctuation">{</span> <span class="token punctuation">}</span> filesystem<span class="token punctuation">{</span> ext4 <span class="token punctuation">}</span>     <span class="token punctuation">\</span>
+            mountpoint<span class="token punctuation">{</span> /boot <span class="token punctuation">}</span>                      <span class="token punctuation">\</span>
+        <span class="token builtin class-name">.</span>                                            <span class="token punctuation">\</span>
+        <span class="token number">4096</span> <span class="token number">4096</span> -1 ext4                            <span class="token punctuation">\</span>
+            <span class="token variable">$lvmok</span><span class="token punctuation">{</span> <span class="token punctuation">}</span>                                <span class="token punctuation">\</span>
+            method<span class="token punctuation">{</span> <span class="token function">format</span> <span class="token punctuation">}</span> format<span class="token punctuation">{</span> <span class="token punctuation">}</span>               <span class="token punctuation">\</span>
+            use_filesystem<span class="token punctuation">{</span> <span class="token punctuation">}</span> filesystem<span class="token punctuation">{</span> ext4 <span class="token punctuation">}</span>     <span class="token punctuation">\</span>
+            mountpoint<span class="token punctuation">{</span> / <span class="token punctuation">}</span>                          <span class="token punctuation">\</span>
+            lv_name<span class="token punctuation">{</span> root <span class="token punctuation">}</span>                          <span class="token punctuation">\</span>
+        <span class="token builtin class-name">.</span>
+
+<span class="token comment"># Write the changes to disks and configure LVM</span>
+d-i partman/confirm boolean <span class="token boolean">true</span>
+d-i partman-lvm/confirm boolean <span class="token boolean">true</span>
+d-i partman-lvm/confirm_nooverwrite boolean <span class="token boolean">true</span>
+
+<span class="token comment"># http://ubuntuforums.org/showthread.php?p=9626883</span>
+d-i partman-lvm/device_remove_lvm boolean <span class="token boolean">true</span>
+
+<span class="token comment"># This makes partman automatically partition without confirmation.</span>
+d-i partman/choose_partition <span class="token punctuation">\</span>
+      <span class="token keyword">select</span> Finish partitioning and <span class="token function">write</span> changes to disk
+d-i partman/confirm_nooverwrite boolean <span class="token boolean">true</span>
+
+d-i pkgsel/include string openssh-server openssh-client <span class="token function">vim</span> <span class="token function">curl</span>
+
+<span class="token comment">### Mirror settings</span>
+d-i mirror/country string manual
+d-i mirror/http/hostname string mirrors.ustc.edu.cn
+d-i mirror/http/directory string /ubuntu
+d-i mirror/http/proxy string http://172.16.1.1:3142/
+
+<span class="token comment"># Custom commands</span>
+d-i preseed/late_command string <span class="token punctuation">\</span>
+    in-target <span class="token function">sh</span> -c <span class="token string">'sed -i &quot;/#PermitRootLogin/a PermitRootLogin yes&quot; /etc/ssh/sshd_config'</span><span class="token punctuation">;</span>
+
+finish-install finish-install/keep-consoles boolean <span class="token boolean">false</span>
+d-i finish-install/reboot_in_progress note
+</code></pre></div><ul><li>机器安装多块硬盘，比如有 5 块 NVMe SSD，256GBx1 &amp; 2TBx4，系统装在 256GB 的硬盘上。</li></ul> <p>删除指定硬盘的配置，在 early_command 中使用 Bash 脚本，通过 debconf-set 来动态指定。</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token comment"># 删除下面两个配置</span>
+d-i partman-auto/disk string /dev/nvme0n1
+d-i grub-installer/bootdev string /dev/nvme0n1
+
+<span class="token comment"># 用这个脚本找出小于 300GB 的硬盘，指定为系统盘</span>
+d-i partman/early_command string <span class="token punctuation">\</span>
+  <span class="token keyword">for</span> <span class="token for-or-select variable">BOOTDEV</span> <span class="token keyword">in</span> nvme0n1 nvme1n1 nvme2n1 nvme3n1 nvme4n1<span class="token punctuation">;</span> <span class="token keyword">do</span> <span class="token punctuation">\</span>
+    <span class="token keyword">if</span> <span class="token punctuation">[</span> -d /sys/block/<span class="token variable">$BOOTDEV</span> <span class="token punctuation">]</span><span class="token punctuation">;</span> <span class="token keyword">then</span> <span class="token punctuation">\</span>
+      <span class="token assign-left variable">SIZE</span><span class="token operator">=</span><span class="token variable"><span class="token variable">`</span><span class="token function">cat</span> /sys/block/$BOOTDEV/size<span class="token variable">`</span></span><span class="token punctuation">;</span> <span class="token punctuation">\</span>
+      <span class="token assign-left variable">GB</span><span class="token operator">=</span><span class="token variable"><span class="token variable">$((</span>$SIZE<span class="token operator">/</span><span class="token number">2</span><span class="token operator">**</span><span class="token number">21</span><span class="token variable">))</span></span><span class="token punctuation">;</span> <span class="token punctuation">\</span>
+      <span class="token keyword">if</span> <span class="token punctuation">[</span> <span class="token variable">$GB</span> -lt <span class="token number">300</span> <span class="token punctuation">]</span><span class="token punctuation">;</span> <span class="token keyword">then</span> <span class="token punctuation">\</span>
+        debconf-set partman-auto/disk <span class="token string">&quot;/dev/<span class="token variable">$BOOTDEV</span>&quot;</span><span class="token punctuation">;</span> <span class="token punctuation">\</span>
+        debconf-set grub-installer/bootdev <span class="token string">&quot;/dev/<span class="token variable">$BOOTDEV</span>&quot;</span><span class="token punctuation">;</span> <span class="token punctuation">\</span>
+      <span class="token keyword">fi</span><span class="token punctuation">;</span> <span class="token punctuation">\</span>
+    <span class="token keyword">fi</span><span class="token punctuation">;</span> <span class="token punctuation">\</span>
+  <span class="token keyword">done</span>
+</code></pre></div><ul><li>机器本来有系统，需要批量重装，原系统也是 LVM 方式分区。</li></ul> <p>使用脚本移除已存在的 LVM 分区，再尝试安装（有相关配置项，但可能存在 <a href="https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=740271" target="_blank" rel="noopener noreferrer">BUG<span><svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" x="0px" y="0px" viewBox="0 0 100 100" width="15" height="15" class="icon outbound"><path fill="currentColor" d="M18.8,85.1h56l0,0c2.2,0,4-1.8,4-4v-32h-8v28h-48v-48h28v-8h-32l0,0c-2.2,0-4,1.8-4,4v56C14.8,83.3,16.6,85.1,18.8,85.1z"></path> <polygon fill="currentColor" points="45.7,48.7 51.3,54.3 77.2,28.5 77.2,37.2 85.2,37.2 85.2,14.9 62.8,14.9 62.8,22.9 71.5,22.9"></polygon></svg> <span class="sr-only">(opens new window)</span></span></a>）。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>d-i partman-lvm/device_remove_lvm boolean <span class="token boolean">true</span>
+d-i partman-auto/purge_lvm_from_device boolean <span class="token boolean">true</span>
+
+<span class="token comment"># 上述配置项可能存在 BUG，那就亲手再删一遍</span>
+d-i partman/early_command string <span class="token punctuation">\</span>
+    <span class="token builtin class-name">set</span> -- <span class="token variable"><span class="token variable">$(</span>vgs --rows --noheadings <span class="token operator">|</span> <span class="token function">head</span> -n <span class="token number">1</span><span class="token variable">)</span></span><span class="token punctuation">;</span> <span class="token punctuation">\</span>
+    <span class="token keyword">for</span> <span class="token for-or-select variable">vg</span> <span class="token keyword">in</span> <span class="token string">&quot;<span class="token variable">$@</span>&quot;</span><span class="token punctuation">;</span> <span class="token keyword">do</span> <span class="token punctuation">\</span>
+        swapoff <span class="token string">&quot;/dev/<span class="token variable">$vg</span>/swap&quot;</span><span class="token punctuation">;</span> <span class="token punctuation">\</span>
+        vgremove -f <span class="token string">&quot;<span class="token variable">$vg</span>&quot;</span><span class="token punctuation">;</span> <span class="token punctuation">\</span>
+    <span class="token keyword">done</span><span class="token punctuation">;</span> <span class="token punctuation">\</span>
+    <span class="token builtin class-name">set</span> -- <span class="token variable"><span class="token variable">$(</span>pvs --rows --noheadings <span class="token operator">|</span> <span class="token function">head</span> -n <span class="token number">1</span><span class="token variable">)</span></span><span class="token punctuation">;</span> <span class="token punctuation">\</span>
+    <span class="token keyword">for</span> <span class="token for-or-select variable">pv</span> <span class="token keyword">in</span> <span class="token string">&quot;<span class="token variable">$@</span>&quot;</span><span class="token punctuation">;</span> <span class="token keyword">do</span> <span class="token punctuation">\</span>
+        pvremove -f <span class="token string">&quot;<span class="token variable">$pv</span>&quot;</span><span class="token punctuation">;</span> <span class="token punctuation">\</span>
+    <span class="token keyword">done</span>
+</code></pre></div><p>Preseed 文件放到 TFTP Server 目录 <code>/srv/tftp/</code> 就好，下载路径就是 GRUB 菜单中 url 指定的那个。</p> <h2 id="参考"><a href="#参考" class="header-anchor">#</a> 参考</h2> <ul><li>https://wiki.ubuntu.com/UEFI/PXE-netboot-install</li> <li>https://www.debian.org/releases/etch/ia64/apbs04.html.en</li></ul></div> <div class="post-tags"><a href="/tag/linux" class="post-tag">#linux</a><a href="/tag/pxe" class="post-tag">#pxe</a><a href="/tag/tips" class="post-tag">#tips</a></div> <!----></div> <div id="postToc" class="sticker post-toc" data-v-5ab084e1 data-v-99a01640><div class="post-toc-item post-toc-h2 active" data-v-5ab084e1 data-v-99a01640><a href="#概述" title="概述" data-v-5ab084e1 data-v-99a01640>概述</a></div><div class="post-toc-item post-toc-h2" data-v-5ab084e1 data-v-99a01640><a href="#准备-pxe-server-环境" title="准备 PXE Server 环境" data-v-5ab084e1 data-v-99a01640>准备 PXE Server 环境</a></div><div class="post-toc-item post-toc-h2" data-v-5ab084e1 data-v-99a01640><a href="#相关文件" title="相关文件" data-v-5ab084e1 data-v-99a01640>相关文件</a></div><div class="post-toc-item post-toc-h3" data-v-5ab084e1 data-v-99a01640><a href="#boot-loader" title="Boot loader" data-v-5ab084e1 data-v-99a01640>Boot loader</a></div><div class="post-toc-item post-toc-h3" data-v-5ab084e1 data-v-99a01640><a href="#grub" title="GRUB" data-v-5ab084e1 data-v-99a01640>GRUB</a></div><div class="post-toc-item post-toc-h3" data-v-5ab084e1 data-v-99a01640><a href="#网络引导" title="网络引导" data-v-5ab084e1 data-v-99a01640>网络引导</a></div><div class="post-toc-item post-toc-h3" data-v-5ab084e1 data-v-99a01640><a href="#软件包缓存" title="软件包缓存" data-v-5ab084e1 data-v-99a01640>软件包缓存</a></div><div class="post-toc-item post-toc-h2" data-v-5ab084e1 data-v-99a01640><a href="#preseed" title="Preseed" data-v-5ab084e1 data-v-99a01640>Preseed</a></div><div class="post-toc-item post-toc-h2" data-v-5ab084e1 data-v-99a01640><a href="#参考" title="参考" data-v-5ab084e1 data-v-99a01640>参考</a></div></div></div></div> <div class="footer" data-v-60b3409b><div class="copyright" data-v-60b3409b><p data-v-60b3409b>
+			© 2014-2200
+			<a href="/" class="router-link-active" data-v-60b3409b>Aimkiray</a>.
+		</p> <p data-v-60b3409b><span data-v-60b3409b>Built with ♥ and VuePress.</span> <span class="designed-by" data-v-60b3409b>Designed by
+				<a href="https://github.com/aimkiray/vuepress-theme-palette" target="_blank" data-v-60b3409b>aimkiray</a>.</span></p></div></div></div></div><div class="global-ui"><!----></div></div>
+    <script src="/assets/js/app.49795733.js" defer></script><script src="/assets/js/3.2ca235c3.js" defer></script><script src="/assets/js/14.1fb229d1.js" defer></script>
+  </body>
+</html>

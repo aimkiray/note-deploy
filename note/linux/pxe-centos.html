@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>通过 PXE 批量安装 CentOS | Aimkiray</title>
+    <meta name="generator" content="VuePress 1.8.2">
+    <link rel="icon" href="/favicon.ico">
+    <meta name="description" content="
+
+PXE(Preboot Execution Environment) 用于从 BIOS/EFI 启动计算机，也可以安装系统，流程如下。">
+    
+    <link rel="preload" href="/assets/css/0.styles.5dee9f5d.css" as="style"><link rel="preload" href="/assets/js/app.49795733.js" as="script"><link rel="preload" href="/assets/js/3.2ca235c3.js" as="script"><link rel="preload" href="/assets/js/13.a001a67f.js" as="script"><link rel="prefetch" href="/assets/js/10.1c9faff4.js"><link rel="prefetch" href="/assets/js/11.3398eebf.js"><link rel="prefetch" href="/assets/js/12.3e0f1209.js"><link rel="prefetch" href="/assets/js/14.1fb229d1.js"><link rel="prefetch" href="/assets/js/15.0eb3337e.js"><link rel="prefetch" href="/assets/js/4.0f412165.js"><link rel="prefetch" href="/assets/js/5.145cfc45.js"><link rel="prefetch" href="/assets/js/6.cb61558e.js"><link rel="prefetch" href="/assets/js/7.790cce59.js"><link rel="prefetch" href="/assets/js/8.7960229b.js"><link rel="prefetch" href="/assets/js/9.96827276.js"><link rel="prefetch" href="/assets/js/vuejs-paginate.0d486c7d.js">
+    <link rel="stylesheet" href="/assets/css/0.styles.5dee9f5d.css">
+  </head>
+  <body>
+    <div id="app" data-server-rendered="true"><div><div class="la-pacman la-2x"><div></div> <div></div> <div></div> <div></div> <div></div> <div></div></div> <div class="global-layout"><div class="header-wrapper header"><div class="title-wrapper"><a href="/" class="title router-link-active">Aimkiray</a></div> <div class="nav-wrap"><a href="/tag/" class="nav-item">Tag
+		</a><a href="/404/" class="nav-item">About
+		</a><a href="https://github.com/aimkiray" target="_blank" rel="noopener" class="nav-item">Git
+		</a></div></div> <div class="cat-ear"><span class="a-ear">▲</span> <span class="a-ear">▲</span></div> <div class="main-wrapper" style="border-top-left-radius:49% 0;border-top-right-radius:49% 0;"><div><div class="post-wrapper"><div class="post-header"><h1 class="post-title">通过 PXE 批量安装 CentOS</h1> <div class="post-meta">
+				Last modified @ Oct 18 2020
+			</div></div> <div class="content__default"><h2 id="概述"><a href="#概述" class="header-anchor">#</a> 概述</h2> <p>PXE(Preboot Execution Environment) 用于从 BIOS/EFI 启动计算机，也可以安装系统，流程如下。</p> <ul><li>客户端从 Network 启动，发送 DHCP 请求。</li> <li>DHCP 服务器发送一个带有 next-server 信息的响应。</li> <li>客户端发送 DHCPREQUEST/DHCPINFORM 请求。</li> <li>DHCP 服务器发送 TFTP 服务器地址和所需的文件名。</li> <li>客户端从 TFTP 服务器下载这个文件，一般是很小的引导文件。</li> <li>pxelinux/grub 读取配置文件，下载相关文件。</li> <li>进入安装程序，下载 Anaconda 的 Kickstart 自动应答脚本，按预设自动安装。</li></ul> <h2 id="环境准备"><a href="#环境准备" class="header-anchor">#</a> 环境准备</h2> <p>手动安装一台机器（本例中使用 CentOS 7.8 Minimal），安装时选择非图形界面，这样装好后在<code>$HOME</code>目录下会生成 Kickstart 文件，保存起来作为模板。</p> <p>指定一台机器作为 PXE Server。为方便起见，先关闭防火墙（可以手动放行 tftp 和 http 端口）和 SELinux（会阻止网络访问本地文件）。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>systemctl stop firewalld.service
+systemctl disable firewalld.service
+<span class="token function">sed</span> -i <span class="token string">'s/^SELINUX=.*/SELINUX=disabled/'</span> /etc/selinux/config
+setenforce <span class="token number">0</span>
+</code></pre></div><p>提前下载好<a href="http://mirrors.aliyun.com/centos/7.8.2003/isos/x86_64/CentOS-7-x86_64-Minimal-2003.iso" target="_blank" rel="noopener noreferrer">安装镜像<span><svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" x="0px" y="0px" viewBox="0 0 100 100" width="15" height="15" class="icon outbound"><path fill="currentColor" d="M18.8,85.1h56l0,0c2.2,0,4-1.8,4-4v-32h-8v28h-48v-48h28v-8h-32l0,0c-2.2,0-4,1.8-4,4v56C14.8,83.3,16.6,85.1,18.8,85.1z"></path> <polygon fill="currentColor" points="45.7,48.7 51.3,54.3 77.2,28.5 77.2,37.2 85.2,37.2 85.2,14.9 62.8,14.9 62.8,22.9 71.5,22.9"></polygon></svg> <span class="sr-only">(opens new window)</span></span></a>放在<code>$HOME</code>目录备用，文件名为<code>CentOS-7-x86_64-Minimal-2003.iso</code>。</p> <p><strong>Optional:</strong> 可用 Dnsmasq 替代 dhcp 和 tftp-server，具体参见 <a href="/note/linux/pxe-ubuntu.html">Ubuntu 篇</a>。</p> <div class="language- extra-class"><pre class="language-text"><code>interface=eth0
+bind-interfaces
+dhcp-range=172.16.119.1,172.16.119.254
+dhcp-boot=uefi/shim.efi
+dhcp-host=172.16.119.1
+
+enable-tftp
+tftp-root=/var/lib/tftpboot
+</code></pre></div><h2 id="dhcp-server"><a href="#dhcp-server" class="header-anchor">#</a> DHCP Server</h2> <p>服务器从 Network 启动时，会加载网卡内置的 DHCP Client，寻找网段中的 DHCP Server 分配 IP，顺便获取 TFTP Server 的 IP。</p> <p>网段中只允许存在一个 DHCP Server，如果你的网关是静态 IP，那么可以自己搭一个，否则需要更改网关配置或者关掉已有 DHCP Server 再自己搭。PXE Server 的网关最好不要和路由器在同一个网段。</p> <p>安装 DHCP Server 为 PXE 设备分配 IP，<code>dhcpd</code>的配置文件位于<code>/etc/dhcp/dhcpd.conf</code>。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>yum <span class="token function">install</span> dhcp -y
+</code></pre></div><p>集群内有两种配置的服务器，一种系统装在 NVMe SSD 中（仅支持 UEFI 引导），故需从 UEFI PXE 启动。另一种的系统盘是 SATA SSD，因为管理口设置 UEFI PXE 失败（或许是个 BUG），就用 Legacy PXE 启动。</p> <p>为了一次性装完所有机器，可以在 DHCP Server 配置中加入判断，区分客户端是普通 DHCP，Legacy PXE 还是 UEFI PXE。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>option pxe-system-type code <span class="token number">93</span> <span class="token operator">=</span> unsigned integer <span class="token number">16</span><span class="token punctuation">;</span>
+
+subnet <span class="token number">172.16</span>.22.0 netmask <span class="token number">255.255</span>.255.0 <span class="token punctuation">{</span>
+  range <span class="token number">172.16</span>.22.2 <span class="token number">172.16</span>.22.254<span class="token punctuation">;</span>
+  option routers <span class="token number">172.16</span>.22.1<span class="token punctuation">;</span>
+  option subnet-mask <span class="token number">255.255</span>.255.0<span class="token punctuation">;</span>
+
+  next-server <span class="token number">172.16</span>.22.1<span class="token punctuation">;</span>
+
+  <span class="token keyword">if</span> option pxe-system-type <span class="token operator">=</span> 00:07 <span class="token punctuation">{</span>      
+    filename <span class="token string">&quot;uefi/shim.efi&quot;</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span> <span class="token keyword">else</span> <span class="token keyword">if</span> option pxe-system-type <span class="token operator">=</span> 00:09 <span class="token punctuation">{</span>
+    filename <span class="token string">&quot;uefi/shim.efi&quot;</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span> <span class="token keyword">else</span> <span class="token punctuation">{</span>
+    filename <span class="token string">&quot;pxelinux.0&quot;</span><span class="token punctuation">;</span>
+  <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre></div><p><code>shim</code> 是一个 EFI 应用程序，它可以尝试运行各种 EFI 引导，如果检测到 UEFI PXE 就从这里启动。</p> <p>SYSLINUX（pxelinux.0） 是 Linux 的启动加载器，可以简化 Linux 的首次安装，Legacy PXE 启动就用这个。</p> <p><code>next-server</code> 提示 TFTP Server 的 IP 地址，一般是本机。</p> <h2 id="tftp-server"><a href="#tftp-server" class="header-anchor">#</a> TFTP Server</h2> <p>PXE 支持基于 UDP 的 TFTP 协议，在上一步中定义的引导镜像（shim &amp; pxelinux.0），使用 TFTP 服务器提供。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>yum <span class="token function">install</span> xinetd tftp-server –y
+</code></pre></div><p>xinetd 是 TFTP 的守护进程，只需启动 xinetd 就能拉起 TFTP。默认根目录在<code>/var/lib/tftpboot</code>，后面会把引导文件放这儿。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>systemctl start xinetd
+systemctl <span class="token builtin class-name">enable</span> xinetd
+</code></pre></div><h2 id="http-server"><a href="#http-server" class="header-anchor">#</a> HTTP Server</h2> <p>TFTP 传输基于小块（512KB）的 UDP 协议，只适合传输小型文件。软件包等大文件还是用 HTTP 下载，比如 NGINX。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>yum <span class="token function">install</span> epel-release
+yum <span class="token function">install</span> nginx
+</code></pre></div><p>CentOS 下，默认配置文件在<code>/etc/nginx/nginx.conf</code>，可以添加<code>autoindex on</code>打开文件索引。root 字段定义了网络根目录，网络安装组件都放这儿。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>server <span class="token punctuation">{</span>
+    listen       <span class="token number">80</span> default_server<span class="token punctuation">;</span>
+    listen       <span class="token punctuation">[</span>::<span class="token punctuation">]</span>:80 default_server<span class="token punctuation">;</span>
+    server_name  _<span class="token punctuation">;</span>
+    root         /usr/share/nginx/html<span class="token punctuation">;</span>
+
+    <span class="token comment"># Load configuration files for the default server block.</span>
+    include /etc/nginx/default.d/*.conf<span class="token punctuation">;</span>
+
+    location / <span class="token punctuation">{</span>
+        autoindex on<span class="token punctuation">;</span>
+    <span class="token punctuation">}</span>
+
+    error_page <span class="token number">404</span> /404.html<span class="token punctuation">;</span>
+        location <span class="token operator">=</span> /40x.html <span class="token punctuation">{</span>
+    <span class="token punctuation">}</span>
+
+    error_page <span class="token number">500</span> <span class="token number">502</span> <span class="token number">503</span> <span class="token number">504</span> /50x.html<span class="token punctuation">;</span>
+        location <span class="token operator">=</span> /50x.html <span class="token punctuation">{</span>
+    <span class="token punctuation">}</span>
+<span class="token punctuation">}</span>
+</code></pre></div><h2 id="grub2-网络启动"><a href="#grub2-网络启动" class="header-anchor">#</a> GRUB2 网络启动</h2> <h3 id="启动镜像"><a href="#启动镜像" class="header-anchor">#</a> 启动镜像</h3> <p>准备 CentOS 7 的 UEFI 启动镜像，可以从 RPM 获取。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>yum <span class="token function">install</span> grub2-efi-x64 shim-x64
+</code></pre></div><p>建立一个专门存放 uefi 启动文件的目录，也就是刚才写在 DHCP Server 配置中的路径。</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token function">mkdir</span> /var/lib/tftpboot/uefi
+</code></pre></div><p>复制相关文件，修改文件权限。</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token function">cp</span> -p /boot/efi/EFI/centos/*.efi /var/lib/tftpboot/uefi/
+<span class="token function">chmod</span> <span class="token number">755</span> /var/lib/tftpboot/uefi/*.efi
+</code></pre></div><p><strong>Optional:</strong> 或者从 ISO 镜像复制过来也行，适用于非 CentOS 宿主机。</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token function">mkdir</span> /centos
+<span class="token function">mkdir</span> <span class="token environment constant">$HOME</span>/uefi_tmp
+<span class="token function">mount</span> -t iso9660 CentOS-7-x86_64-Minimal-2003.iso /centos -o loop,ro
+<span class="token function">cp</span> -pr /centos/Packages/shim-version-architecture.rpm <span class="token environment constant">$HOME</span>/uefi_tmp
+<span class="token function">cp</span> -pr /centos/Packages/grub2-efi-version-architecture.rpm <span class="token environment constant">$HOME</span>/uefi_tmp
+</code></pre></div><p>Extract the packages:</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token builtin class-name">cd</span> <span class="token environment constant">$HOME</span>/uefi_tmp
+rpm2cpio shim-version-architecture.rpm <span class="token operator">|</span> cpio -dimv
+rpm2cpio grub2-efi-version-architecture.rpm <span class="token operator">|</span> cpio -dimv
+</code></pre></div><p>复制 EFI 启动镜像到 TFTP 目录。</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token function">cp</span> <span class="token environment constant">$HOME</span>/uefi_tmp/boot/efi/EFI/centos/shim.efi /var/lib/tftpboot/
+<span class="token function">cp</span> <span class="token environment constant">$HOME</span>/uefi_tmp/boot/efi/EFI/centos/grubx64.efi /var/lib/tftpboot/
+</code></pre></div><h3 id="grub-引导"><a href="#grub-引导" class="header-anchor">#</a> GRUB 引导</h3> <p>GRUB 的配置文件<code>grub.cfg</code>需要放在和<code>grubx64.efi</code>相同的目录。在本例中，创建<code>/var/lib/tftpboot/uefi/grub.cfg</code>配置文件。</p> <p>在下面的栗子中，<code>linuxefi</code>字段定义的 Vmlinuz 是 Linux 内核可执行文件。Vmlinuz 是一个压缩的 Linux 内核，它将 OS 加载到内存中，这样服务器就可以启动了。<code>inst.ks</code>字段定义的是等会要搞的 Kickstart 自动安装配置文件。<code>initrdefi</code>字段指向 Initrd 镜像，它可以通过引导加载器初始化 RAM 磁盘，然后将其挂载为根文件系统，并从中运行 CentOS 安装程序。</p> <p>除了<code>inst.ks</code>放在 Nginx，别的文件用 TFTP 托管。</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token builtin class-name">set</span> <span class="token assign-left variable">default</span><span class="token operator">=</span><span class="token string">&quot;0&quot;</span>
+
+<span class="token keyword">function</span> <span class="token function-name function">load_video</span> <span class="token punctuation">{</span>
+  insmod efi_gop
+  insmod efi_uga
+  insmod video_bochs
+  insmod video_cirrus
+  insmod all_video
+<span class="token punctuation">}</span>
+
+load_video
+<span class="token builtin class-name">set</span> <span class="token assign-left variable">gfxpayload</span><span class="token operator">=</span>keep
+insmod gzio
+insmod part_gpt
+insmod ext2
+<span class="token builtin class-name">set</span> <span class="token assign-left variable">timeout</span><span class="token operator">=</span><span class="token number">6</span>
+
+menuentry <span class="token string">'Install CentOS Linux 7.8'</span> --class fedora --class gnu-linux --class gnu --class os <span class="token punctuation">{</span>
+  linuxefi CentOS-7.8/vmlinuz <span class="token assign-left variable">ip</span><span class="token operator">=</span>dhcp inst.ks<span class="token operator">=</span>http://172.16.22.1:80/supermicro.cfg
+  initrdefi CentOS-7.8/initrd.img
+<span class="token punctuation">}</span>
+</code></pre></div><h2 id="syslinux-引导"><a href="#syslinux-引导" class="header-anchor">#</a> SYSLINUX 引导</h2> <p>Syslinux 一个是能够通过 PXE 从设备/CD/网络启动的引导加载程序集合。在本例中用于 Legacy PXE。</p> <p>安装 syslinux，复制引导镜像到 TFTP 根目录。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>yum -y <span class="token function">install</span> syslinux
+<span class="token function">cp</span> /usr/share/syslinux/pxelinux.0 /var/lib/tftpboot/
+</code></pre></div><p>创建 pxelinux 的配置文件。</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token function">mkdir</span> /var/lib/tftpboot/pxelinux.cfg
+<span class="token function">vim</span> /var/lib/tftpboot/pxelinux.cfg/default
+</code></pre></div><p>在这个栗子中，依然能看到 vmlinuz &amp; initrd &amp; ks 熟悉的身影，如需修改可参照上一步。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>default vesamenu.c32
+prompt <span class="token number">1</span>
+<span class="token function">timeout</span> <span class="token number">6</span>
+
+display boot.msg
+
+label linux
+  menu label ^Install system
+  menu default
+  kernel CentOS-7.8/vmlinuz
+  append <span class="token assign-left variable">initrd</span><span class="token operator">=</span>CentOS-7.8/initrd.img <span class="token assign-left variable">ip</span><span class="token operator">=</span>dhcp <span class="token assign-left variable">ks</span><span class="token operator">=</span>http://172.16.22.1/supermicro.cfg
+</code></pre></div><h2 id="kickstart"><a href="#kickstart" class="header-anchor">#</a> Kickstart</h2> <p>建议先用U盘在非图形界面手动安装一台，复制 $HOME 目录下的<code>anaconda-ks.cfg</code>文件作为参考。</p> <p>以下配置中，系统将从网络安装，<code>url</code>定义了网络源，最好使用内网地址。<code>rootpw</code>指定了root账户密码。系统装在<code>nvme1n1</code>中，并使用 LVM 自动分区。</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token comment">#version=DEVEL</span>
+<span class="token function">install</span>
+<span class="token comment"># System authorization information</span>
+auth --enableshadow --passalgo<span class="token operator">=</span>sha512
+<span class="token comment"># Use text mode install</span>
+text
+<span class="token comment"># Run the Setup Agent on first boot</span>
+firstboot --enable
+ignoredisk --only-use<span class="token operator">=</span>nvme1n1
+<span class="token comment"># Keyboard layouts</span>
+keyboard --vckeymap<span class="token operator">=</span>us --xlayouts<span class="token operator">=</span><span class="token string">''</span>
+<span class="token comment"># System language</span>
+lang en_US.UTF-8
+<span class="token comment"># Use network installation</span>
+url --url<span class="token operator">=</span><span class="token string">&quot;http://172.16.22.1/CentOS-7.8&quot;</span>
+<span class="token comment"># Reboot after installation</span>
+<span class="token function">reboot</span>
+
+<span class="token comment"># Network information</span>
+network --bootproto<span class="token operator">=</span>dhcp --device<span class="token operator">=</span>eno1 --onboot<span class="token operator">=</span>off --ipv6<span class="token operator">=</span>auto --no-activate
+network --bootproto<span class="token operator">=</span>dhcp --device<span class="token operator">=</span>eno2 --onboot<span class="token operator">=</span>off --ipv6<span class="token operator">=</span>auto
+network --bootproto<span class="token operator">=</span>static --device<span class="token operator">=</span>enp33s0 --onboot<span class="token operator">=</span>yes --ip <span class="token number">172.16</span>.1.10 --netmask <span class="token number">255.255</span>.0.0 --gateway <span class="token number">172.16</span>.255.254 --ipv6<span class="token operator">=</span>auto --nameserver <span class="token number">114.114</span>.114.114
+<span class="token comment"># Firewall configuration</span>
+firewall --disable
+
+<span class="token comment">#Root password</span>
+rootpw --plaintext <span class="token string">&quot;123@def&quot;</span>
+<span class="token comment"># SELinux configuration</span>
+selinux --disabled
+<span class="token comment"># System services</span>
+services --enabled<span class="token operator">=</span><span class="token string">&quot;chronyd&quot;</span>
+<span class="token comment"># Do not configure the X Window System</span>
+skipx
+<span class="token comment"># System timezone</span>
+timezone Asia/Shanghai --isUtc
+<span class="token comment"># System bootloader configuration</span>
+bootloader --append<span class="token operator">=</span><span class="token string">&quot; crashkernel=auto&quot;</span> --location<span class="token operator">=</span>mbr --boot-drive<span class="token operator">=</span>nvme1n1
+autopart
+<span class="token comment"># Partition clearing information</span>
+clearpart --all --initlabel --drives<span class="token operator">=</span>nvme1n1
+
+%packages
+@core
+chrony
+kexec-tools
+
+%end
+
+%addon com_redhat_kdump --enable --reserve-mb<span class="token operator">=</span><span class="token string">'auto'</span>
+
+%end
+
+%anaconda
+pwpolicy root --minlen<span class="token operator">=</span><span class="token number">6</span> --minquality<span class="token operator">=</span><span class="token number">1</span> --notstrict --nochanges --notempty
+pwpolicy user --minlen<span class="token operator">=</span><span class="token number">6</span> --minquality<span class="token operator">=</span><span class="token number">1</span> --notstrict --nochanges --emptyok
+pwpolicy luks --minlen<span class="token operator">=</span><span class="token number">6</span> --minquality<span class="token operator">=</span><span class="token number">1</span> --notstrict --nochanges --notempty
+%end
+</code></pre></div><h2 id="开始安装"><a href="#开始安装" class="header-anchor">#</a> 开始安装</h2> <p>可尝试通过 IPMI 工具使客户端进入 PXE 模式。后续可通过修改 Kickstart 文件自动配置静态 IP，以实现全自动装机。</p></div> <div class="post-tags"><a href="/tag/linux" class="post-tag">#linux</a><a href="/tag/pxe" class="post-tag">#pxe</a><a href="/tag/tips" class="post-tag">#tips</a></div> <!----></div> <div id="postToc" class="sticker post-toc" data-v-5ab084e1 data-v-99a01640><div class="post-toc-item post-toc-h2 active" data-v-5ab084e1 data-v-99a01640><a href="#概述" title="概述" data-v-5ab084e1 data-v-99a01640>概述</a></div><div class="post-toc-item post-toc-h2" data-v-5ab084e1 data-v-99a01640><a href="#环境准备" title="环境准备" data-v-5ab084e1 data-v-99a01640>环境准备</a></div><div class="post-toc-item post-toc-h2" data-v-5ab084e1 data-v-99a01640><a href="#dhcp-server" title="DHCP Server" data-v-5ab084e1 data-v-99a01640>DHCP Server</a></div><div class="post-toc-item post-toc-h2" data-v-5ab084e1 data-v-99a01640><a href="#tftp-server" title="TFTP Server" data-v-5ab084e1 data-v-99a01640>TFTP Server</a></div><div class="post-toc-item post-toc-h2" data-v-5ab084e1 data-v-99a01640><a href="#http-server" title="HTTP Server" data-v-5ab084e1 data-v-99a01640>HTTP Server</a></div><div class="post-toc-item post-toc-h2" data-v-5ab084e1 data-v-99a01640><a href="#grub2-网络启动" title="GRUB2 网络启动" data-v-5ab084e1 data-v-99a01640>GRUB2 网络启动</a></div><div class="post-toc-item post-toc-h3" data-v-5ab084e1 data-v-99a01640><a href="#启动镜像" title="启动镜像" data-v-5ab084e1 data-v-99a01640>启动镜像</a></div><div class="post-toc-item post-toc-h3" data-v-5ab084e1 data-v-99a01640><a href="#grub-引导" title="GRUB 引导" data-v-5ab084e1 data-v-99a01640>GRUB 引导</a></div><div class="post-toc-item post-toc-h2" data-v-5ab084e1 data-v-99a01640><a href="#syslinux-引导" title="SYSLINUX 引导" data-v-5ab084e1 data-v-99a01640>SYSLINUX 引导</a></div><div class="post-toc-item post-toc-h2" data-v-5ab084e1 data-v-99a01640><a href="#kickstart" title="Kickstart" data-v-5ab084e1 data-v-99a01640>Kickstart</a></div><div class="post-toc-item post-toc-h2" data-v-5ab084e1 data-v-99a01640><a href="#开始安装" title="开始安装" data-v-5ab084e1 data-v-99a01640>开始安装</a></div></div></div></div> <div class="footer" data-v-60b3409b><div class="copyright" data-v-60b3409b><p data-v-60b3409b>
+			© 2014-2200
+			<a href="/" class="router-link-active" data-v-60b3409b>Aimkiray</a>.
+		</p> <p data-v-60b3409b><span data-v-60b3409b>Built with ♥ and VuePress.</span> <span class="designed-by" data-v-60b3409b>Designed by
+				<a href="https://github.com/aimkiray/vuepress-theme-palette" target="_blank" data-v-60b3409b>aimkiray</a>.</span></p></div></div></div></div><div class="global-ui"><!----></div></div>
+    <script src="/assets/js/app.49795733.js" defer></script><script src="/assets/js/3.2ca235c3.js" defer></script><script src="/assets/js/13.a001a67f.js" defer></script>
+  </body>
+</html>

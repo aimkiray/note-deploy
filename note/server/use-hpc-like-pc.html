@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>如何整活闲置超算 | Aimkiray</title>
+    <meta name="generator" content="VuePress 1.8.2">
+    <link rel="icon" href="/favicon.ico">
+    <meta name="description" content="本文所述操作基于仅有 40 台双 EPYC 7H12 家用服务器组成的家用土超算，据咱分析，和主流超算差别应该不大（其实文中的例子更适合 Kubernetes 集群，至于为何用超算系统，老板喜欢╮(╯▽╰)╭。">
+    
+    <link rel="preload" href="/assets/css/0.styles.5dee9f5d.css" as="style"><link rel="preload" href="/assets/js/app.49795733.js" as="script"><link rel="preload" href="/assets/js/3.2ca235c3.js" as="script"><link rel="preload" href="/assets/js/15.0eb3337e.js" as="script"><link rel="prefetch" href="/assets/js/10.1c9faff4.js"><link rel="prefetch" href="/assets/js/11.3398eebf.js"><link rel="prefetch" href="/assets/js/12.3e0f1209.js"><link rel="prefetch" href="/assets/js/13.a001a67f.js"><link rel="prefetch" href="/assets/js/14.1fb229d1.js"><link rel="prefetch" href="/assets/js/4.0f412165.js"><link rel="prefetch" href="/assets/js/5.145cfc45.js"><link rel="prefetch" href="/assets/js/6.cb61558e.js"><link rel="prefetch" href="/assets/js/7.790cce59.js"><link rel="prefetch" href="/assets/js/8.7960229b.js"><link rel="prefetch" href="/assets/js/9.96827276.js"><link rel="prefetch" href="/assets/js/vuejs-paginate.0d486c7d.js">
+    <link rel="stylesheet" href="/assets/css/0.styles.5dee9f5d.css">
+  </head>
+  <body>
+    <div id="app" data-server-rendered="true"><div><div class="la-pacman la-2x"><div></div> <div></div> <div></div> <div></div> <div></div> <div></div></div> <div class="global-layout"><div class="header-wrapper header"><div class="title-wrapper"><a href="/" class="title router-link-active">Aimkiray</a></div> <div class="nav-wrap"><a href="/tag/" class="nav-item">Tag
+		</a><a href="/404/" class="nav-item">About
+		</a><a href="https://github.com/aimkiray" target="_blank" rel="noopener" class="nav-item">Git
+		</a></div></div> <div class="cat-ear"><span class="a-ear">▲</span> <span class="a-ear">▲</span></div> <div class="main-wrapper" style="border-top-left-radius:49% 0;border-top-right-radius:49% 0;"><div><div class="post-wrapper"><div class="post-header"><h1 class="post-title">如何整活闲置超算</h1> <div class="post-meta">
+				Last modified @ Jul 26 2020
+			</div></div> <div class="content__default"><p>本文所述操作基于仅有 40 台双 EPYC 7H12 家用服务器组成的家用土超算，据咱分析，和主流超算差别应该不大（其实文中的例子更适合 Kubernetes 集群，至于为何用超算系统，老板喜欢╮(╯▽╰)╭。</p> <h2 id="超级计算机"><a href="#超级计算机" class="header-anchor">#</a> 超级计算机</h2> <p>超级计算机不是单台单个系统，而是由上千上万台高性能服务器（HPC）组成，每台服务器运行单独的操作系统，并作为一个计算节点，独立或协同工作。其设计难点在数据传输带宽和延迟，共享内存，并行存储，散热等方面。表面上看，计算节点是个服务器，可以 SSH 登录。节点间使用 InfiniBand 协议通信，共享 home 目录。</p> <p>传统超算主要用于并行计算。实际使用时我们不可能亲自 SSH 上去部署服务，而是通过专用的任务调度工具。这里介绍的是 Slurm (Simple Linux Utility for Resource Management)，一个开源超算资源管理软件，包括天河二号在内，在 TOP500 中占有率超过 50%。</p> <h2 id="食材"><a href="#食材" class="header-anchor">#</a> 食材</h2> <h3 id="slurm"><a href="#slurm" class="header-anchor">#</a> Slurm</h3> <p>Slurm 用于管理计算资源，主要用于运行 Linux 的超算，简单介绍下部署任务时常用的三个命令。</p> <ul><li><code>salloc</code> 先抢占资源，后部署任务。执行 salloc 命令后排队等待资源分配，排到后开始计费。此时可以使用 ssh 登录到计算节点，手动执行命令。当用户退出登录节点后任务自动终止。适合测试程序。</li> <li><code>srun</code> 交互式提交任务。任务提交后会在当前终端实时返回程序输出，程序退出自动释放资源。适合交互式单节点任务。</li> <li><code>sbatch</code> 批量提交任务。最常用的任务提交命令，将节点类型，任务数量，资源需求等参数和执行程序的命令写在 Bash 脚本中，在所有任务执行完成后释放资源，默认情况下，任何任务失败会终止全部任务并释放资源。适合提交并行或多步任务。</li></ul> <p>超算上运行的程序一般都会针对任务调度系统定制优化，比如将大规模优化问题通过数学方法分解成数个子问题，或者 FFT 之类的适合分解的算法，配合 Slurm 并行计算出结果再迭代解出原问题。</p> <p>现代程序一般会有很多运行时依赖。在服务器上可以用 pacman / apt 安装，而超算出于安全和稳定的考虑，禁止用户获取 root 权限，无法自行安装应用。不过我们可以通过 environment modules 运行预装的程序。</p> <h3 id="modules"><a href="#modules" class="header-anchor">#</a> Modules</h3> <p>Modules 是一个 shell 初始化工具，modulefiles 用于会话期间修改运行环境。配合 sbatch 使用，可在 bash 脚本中动态加载依赖的软件/库。</p> <p>查看并过滤可用软件。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>module avail <span class="token operator">&gt;&gt;</span> module.log <span class="token operator"><span class="token file-descriptor important">2</span>&gt;</span><span class="token file-descriptor important">&amp;1</span>
+<span class="token function">cat</span> module.log <span class="token operator">|</span> <span class="token function">grep</span> gcc
+
+gcc/4.4.7-kd
+gcc/4.9.2-fenggl
+gcc/7.3.0-wzm
+gcc/8.1.0-wjl
+gcc/8.3.0-wzm
+gcc/9.1.0-fenggl
+<span class="token punctuation">..</span>.
+</code></pre></div><p>复制软件全称，载入到当前环境。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>module load gcc/8.1.0-wjl
+</code></pre></div><p>之后就能用 GCC 8.1 编译运行程序了。超算专用程序的依赖不多，可以一个个添加。但像咱这样的搬砖家写出来的缝合怪，若是没有包管理工具，没人能跑起来。不如换个思路，说起依赖问题，不知道大家有没有想到容器呢？</p> <h3 id="singularity"><a href="#singularity" class="header-anchor">#</a> Singularity</h3> <p>Singularity 是专为超算打造的容器，对性能的损耗可以忽略不计。支持 InfiniBand 和 GPU 等 PCIe 设备，兼容 Docker 镜像，也有 Kubernetes CRI 的官方支持。我们可以在本地安装 Singularity 打包程序和运行环境，再到超算上用 environment modules 加载 Singularity 运行程序镜像。</p> <p>创建 singularity 定义文件 <code>screenfetch.def</code>，写入如下内容。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>Bootstrap: docker
+From: ubuntu:18.04
+
+%help
+    App: screenfetch
+    Usage: singulaity <span class="token builtin class-name">exec</span> <span class="token operator">&lt;</span>image name<span class="token operator">&gt;</span> <span class="token operator">&lt;</span>command<span class="token operator">&gt;</span>
+
+%files
+    /etc/apt/sources.list
+    /etc/ssl/certs /etc/ssl/certs
+
+%post
+    <span class="token function">apt-get</span> update <span class="token operator">&amp;&amp;</span> <span class="token function">apt-get</span> <span class="token function">install</span> -y screenfetch
+    <span class="token function">rm</span> -rf /var/lib/apt/lists/*
+
+%environment
+    <span class="token builtin class-name">export</span> <span class="token assign-left variable"><span class="token environment constant">LC_ALL</span></span><span class="token operator">=</span>C
+
+%runscript
+    <span class="token builtin class-name">exec</span> screenfetch
+</code></pre></div><p>Bootstrap 指定镜像源，From 指定镜像名，%help 是帮助信息，%files 是需要打包到镜像的文件（如不指定路径，则使用源文件相同路径）。</p> <p>这个栗子中，我们从 Docker 源获取 Ubuntu 18.04 镜像，将本地的 apt 软件源和 ssl 证书拷贝到容器的相同位置，然后安装 screenfetch 并清理安装缓存，最后设置环境变量和启动容器时运行的脚本。</p> <p>保存文件，使用如下命令编译镜像。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>singularity build run.sif screenfetch.def
+</code></pre></div><p>执行后，当前目录下多出的 run.sif 就是镜像本体了，这个镜像可以丢到官方仓库也可以直接运行。从镜像启动容器有多种方式，比如，使用 run 指令会运行 runscript 中的语句，而 exec 指令允许用户自定义容器运行的程序，比如。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>singularity run run.sif
+singularity <span class="token builtin class-name">exec</span> run.sif screenfetch
+</code></pre></div><p>以上两条命令返回的结果是相同的。如果你对 Dockerfile 比较熟悉，也可以打包 Docker 镜像，上传到 Docker Hub，然后使用 Singularity 运行 Docker 镜像，这样的镜像体积小很多，比如。</p> <div class="language-bash extra-class"><pre class="language-bash"><code>singularity <span class="token builtin class-name">exec</span> docker://ubuntu:latest lsb_release -a
+</code></pre></div><h2 id="料理"><a href="#料理" class="header-anchor">#</a> 料理</h2> <p>那没有优化过的程序可以跑在超算上吗？就是那种不管加再多的核心，再多的内存都不会变快的垃圾代码？もちろんです，有了 bash 和容器，就算把博客挂到超算上也没问题呦！</p> <h3 id="多节点部署-相同参数"><a href="#多节点部署-相同参数" class="header-anchor">#</a> 多节点部署（相同参数）</h3> <p>此次测试的 Golang 程序采用微服务架构，根据功能拆分为主模块和子模块，一对多的关系，通信协议是 RESTful API。子模块部署在多台服务器上，相互之间没有依赖关系。使用 sbatch 的简单栗子就像下面这样。</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token shebang important">#!/bin/sh</span>
+<span class="token comment">#SBATCH --job-name worker</span>
+<span class="token comment">#SBATCH --error=job-%j.err</span>
+<span class="token comment">#SBATCH --partition=amd</span>
+<span class="token comment">#SBATCH --nodes=3</span>
+<span class="token comment">#SBATCH --ntasks=3</span>
+<span class="token comment">#SBATCH --cpus-per-task=64</span>
+<span class="token comment">#SBATCH --no-kill=on</span>
+
+module load singularity/3.6
+
+singularity <span class="token builtin class-name">exec</span> bin.sif <span class="token operator">&lt;</span>command<span class="token operator">&gt;</span>
+</code></pre></div><p>按需修改，保存到<code>job-worker.sh</code>中。配置中的 nodes 和 ntasks 保持一致，cpus-per-task 是单个节点的核心数，以保证每个节点运行一个程序（只设定 ntasks 也可以），另外我们指定 no-kill 参数，使得单一节点故障不会影响其他节点。此方法操作简单，只需执行<code>sbatch job-worker.sh</code>一条命令，~~但没办法修改任务的运行参数。~~在<a href="https://slurm.schedmd.com/sbatch.html" target="_blank" rel="noopener noreferrer">文档<span><svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" x="0px" y="0px" viewBox="0 0 100 100" width="15" height="15" class="icon outbound"><path fill="currentColor" d="M18.8,85.1h56l0,0c2.2,0,4-1.8,4-4v-32h-8v28h-48v-48h28v-8h-32l0,0c-2.2,0-4,1.8-4,4v56C14.8,83.3,16.6,85.1,18.8,85.1z"></path> <polygon fill="currentColor" points="45.7,48.7 51.3,54.3 77.2,28.5 77.2,37.2 85.2,37.2 85.2,14.9 62.8,14.9 62.8,22.9 71.5,22.9"></polygon></svg> <span class="sr-only">(opens new window)</span></span></a>中 filename pattern 的说明，通配符 %A 和 %a 代指作业编号和索引编号，有兴趣可以尝试下能否用在命令参数中。</p> <h3 id="多节点部署-不同参数"><a href="#多节点部署-不同参数" class="header-anchor">#</a> 多节点部署（不同参数）</h3> <p>为解决上述问题，我们将 nodes 和 ntasks 改为 1，这样 sbatch 脚本只会部署单个节点，然后通过外部脚本循环执行 sbatch 命令，在每次循环中修改 sbatch 脚本的命令参数，以此实现动态传参的效果。</p> <ul><li>sbatch 脚本</li></ul> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token shebang important">#!/bin/sh</span>
+<span class="token comment">#SBATCH --job-name worker</span>
+<span class="token comment">#SBATCH --error=job-%j.err</span>
+<span class="token comment">#SBATCH --partition=amd</span>
+<span class="token comment">#SBATCH --ntasks=1</span>
+
+module load singularity/3.6
+
+<span class="token assign-left variable">ip</span><span class="token operator">=</span><span class="token variable"><span class="token variable">$(</span><span class="token function">ip</span> addr <span class="token operator">|</span> <span class="token function">grep</span> <span class="token string">'state UP'</span> -A2 <span class="token operator">|</span> <span class="token function">tail</span> -n1 <span class="token operator">|</span> <span class="token function">awk</span> <span class="token string">'{print <span class="token variable">$2</span>}'</span> <span class="token operator">|</span> <span class="token function">cut</span> -f1 -d <span class="token string">'/'</span><span class="token variable">)</span></span>
+
+singularity <span class="token builtin class-name">exec</span> bin.sif <span class="token operator">&lt;</span>command<span class="token operator">&gt;</span> -i <span class="token variable">$ip</span> -p port
+</code></pre></div><ul><li>外部脚本</li></ul> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token shebang important">#!/bin/bash</span>
+
+<span class="token builtin class-name">set</span> -o pipefail
+
+<span class="token keyword">for</span> <span class="token for-or-select variable">i</span> <span class="token keyword">in</span> <span class="token punctuation">{</span><span class="token number">23300</span><span class="token punctuation">..</span><span class="token number">23333</span><span class="token punctuation">}</span><span class="token punctuation">;</span>
+<span class="token keyword">do</span>
+    <span class="token function">sed</span> -i <span class="token string">'s/port/<span class="token variable">$i</span>/g'</span> job-worker.sh
+    sbatch job-worker.sh
+    <span class="token builtin class-name">echo</span> <span class="token string">&quot;Task <span class="token variable">$i</span> works.&quot;</span>
+<span class="token keyword">done</span>
+</code></pre></div><p>在这个栗子中我们部署了 33 个任务，分别监听不同的端口（23300 ~ 23333）。</p> <h3 id="单节点部署"><a href="#单节点部署" class="header-anchor">#</a> 单节点部署</h3> <p>有些模块适合放在一起运行，它们会突发性的占用宿主机全部资源，但一般不会同时触发。接下来我们申请一个完整计算节点，尝试在单节点一次提交多个不同的程序。</p> <p>想法是可行的，但 Slurm 好像没有这种方法。不过 sbatch 命令使用 bash 脚本，那我们用 bash 的一些方法也是可以的吧。</p> <div class="language-bash extra-class"><pre class="language-bash"><code><span class="token shebang important">#!/bin/sh</span>
+<span class="token comment">#SBATCH --job-name worker</span>
+<span class="token comment">#SBATCH --error=job-%j.err</span>
+<span class="token comment">#SBATCH --partition=amd</span>
+<span class="token comment">#SBATCH --nodes=1</span>
+<span class="token comment">#SBATCH --ntasks=1</span>
+<span class="token comment">#SBATCH --cpus-per-task=64</span>
+
+module load singularity/3.6
+
+<span class="token function">nohup</span> singularity <span class="token builtin class-name">exec</span> bin.sif <span class="token operator">&lt;</span>module<span class="token operator"><span class="token file-descriptor important">1</span>&gt;</span> <span class="token operator">&lt;</span>command<span class="token operator"><span class="token file-descriptor important">1</span>&gt;</span> <span class="token operator">&gt;&gt;</span> module1.log <span class="token operator"><span class="token file-descriptor important">2</span>&gt;</span><span class="token file-descriptor important">&amp;1</span> <span class="token operator">&amp;</span>
+<span class="token function">sleep</span> 30s
+<span class="token function">nohup</span> singularity <span class="token builtin class-name">exec</span> bin.sif <span class="token operator">&lt;</span>module<span class="token operator"><span class="token file-descriptor important">2</span>&gt;</span> <span class="token operator">&lt;</span>command<span class="token operator"><span class="token file-descriptor important">2</span>&gt;</span> <span class="token operator">&gt;&gt;</span> module2.log <span class="token operator"><span class="token file-descriptor important">2</span>&gt;</span><span class="token file-descriptor important">&amp;1</span> <span class="token operator">&amp;</span>
+<span class="token function">wait</span>
+</code></pre></div><p>后台运行了两个任务，其中 <code>module2</code> 依赖 <code>module1</code>，为确保 <code>module1</code> 已经启动，简单的间隔 30s 后再启动 <code>module2</code>。由于 sbatch 脚本执行完成后 Slurm 会认为任务结束并释放资源，所以最后通过 wait 指令，等待所有后台任务。</p> <p>基于上述方法（主要是容器），咱们可以对超算为所欲为，至于代价嘛。hhh</p></div> <div class="post-tags"><a href="/tag/hpc" class="post-tag">#hpc</a><a href="/tag/slurm" class="post-tag">#slurm</a><a href="/tag/singularity" class="post-tag">#singularity</a><a href="/tag/linux" class="post-tag">#linux</a></div> <!----></div> <div id="postToc" class="sticker post-toc" data-v-5ab084e1 data-v-99a01640><div class="post-toc-item post-toc-h2 active" data-v-5ab084e1 data-v-99a01640><a href="#超级计算机" title="超级计算机" data-v-5ab084e1 data-v-99a01640>超级计算机</a></div><div class="post-toc-item post-toc-h2" data-v-5ab084e1 data-v-99a01640><a href="#食材" title="食材" data-v-5ab084e1 data-v-99a01640>食材</a></div><div class="post-toc-item post-toc-h3" data-v-5ab084e1 data-v-99a01640><a href="#slurm" title="Slurm" data-v-5ab084e1 data-v-99a01640>Slurm</a></div><div class="post-toc-item post-toc-h3" data-v-5ab084e1 data-v-99a01640><a href="#modules" title="Modules" data-v-5ab084e1 data-v-99a01640>Modules</a></div><div class="post-toc-item post-toc-h3" data-v-5ab084e1 data-v-99a01640><a href="#singularity" title="Singularity" data-v-5ab084e1 data-v-99a01640>Singularity</a></div><div class="post-toc-item post-toc-h2" data-v-5ab084e1 data-v-99a01640><a href="#料理" title="料理" data-v-5ab084e1 data-v-99a01640>料理</a></div><div class="post-toc-item post-toc-h3" data-v-5ab084e1 data-v-99a01640><a href="#多节点部署-相同参数" title="多节点部署（相同参数）" data-v-5ab084e1 data-v-99a01640>多节点部署（相同参数）</a></div><div class="post-toc-item post-toc-h3" data-v-5ab084e1 data-v-99a01640><a href="#多节点部署-不同参数" title="多节点部署（不同参数）" data-v-5ab084e1 data-v-99a01640>多节点部署（不同参数）</a></div><div class="post-toc-item post-toc-h3" data-v-5ab084e1 data-v-99a01640><a href="#单节点部署" title="单节点部署" data-v-5ab084e1 data-v-99a01640>单节点部署</a></div></div></div></div> <div class="footer" data-v-60b3409b><div class="copyright" data-v-60b3409b><p data-v-60b3409b>
+			© 2014-2200
+			<a href="/" class="router-link-active" data-v-60b3409b>Aimkiray</a>.
+		</p> <p data-v-60b3409b><span data-v-60b3409b>Built with ♥ and VuePress.</span> <span class="designed-by" data-v-60b3409b>Designed by
+				<a href="https://github.com/aimkiray/vuepress-theme-palette" target="_blank" data-v-60b3409b>aimkiray</a>.</span></p></div></div></div></div><div class="global-ui"><!----></div></div>
+    <script src="/assets/js/app.49795733.js" defer></script><script src="/assets/js/3.2ca235c3.js" defer></script><script src="/assets/js/15.0eb3337e.js" defer></script>
+  </body>
+</html>
