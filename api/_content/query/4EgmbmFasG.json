@@ -1,0 +1,1 @@
+[{"_path":"/blog/make-nvidia-explosion","title":"NVIDIA 核试验（Linux）","description":"Linux 的 NVIDIA 超频工具可没有 Windows 的那么多，看了一圈好像也只有官方提供的 nvidia-settings。然而这玩意用 X11 扩展协议和显卡 DDX 驱动通信，而服务器没有图形界面，根本届不到。","date":"2021-03-10T12:10:52.000Z","tags":["linux","nvidia","xorg"]}]
